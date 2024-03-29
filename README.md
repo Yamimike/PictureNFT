@@ -1,5 +1,33 @@
 # PictureNFT
 
+PictureNFT (Non-Fungible Token) dapp where users can create, list, sell, and tip creators: 
+
+1. Minting PictureNFTs:
+   - Users can create unique **PictureNFTs** by uploading their digital artwork or images.
+   - Each PictureNFT is represented by a distinct token on the blockchain, making it one-of-a-kind. 
+
+2. View Owned PictureNFTs:
+   - Users can retrieve a list of PictureNFT IDs associated with their connected wallet address.
+   - This allows them to keep track of their owned tokens. 
+
+3. Listing PictureNFTs for Sale:
+   - Owners of PictureNFTs can set an asking price and list their tokens on the marketplace.
+   - Potential buyers can view these listings and decide whether to purchase. 
+
+4. Exploring Marketplace Listings:
+   - Users can browse the marketplace to discover available PictureNFTs.
+   - Listings include details such as the creator, description, and asking price. 
+
+5. Buying PictureNFTs:
+   - Interested buyers can purchase listed PictureNFTs by transferring the specified amount of the native cryptocurrency (e.g., SUI).
+   - Ownership of the token is transferred upon successful purchase. 
+
+6. Tipping Creators:
+   - Users who appreciate a particular PictureNFT can tip the creator directly.
+   - Tipping fosters a supportive community and encourages artists to continue creating. 
+
+Remember, PictureNFTs represent digital art, photography, or other visual content, and their uniqueness is guaranteed by blockchain technology.
+
 ## Installation
 
 To deploy and use the smart contract, follow these steps:
