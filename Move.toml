@@ -1,5 +1,5 @@
 [package]
-name = "auction"
+name = "PictureNFT"
 version = "1.0.0"
 
 [dependencies]
