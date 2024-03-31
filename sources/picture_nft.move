@@ -24,7 +24,6 @@ module picture::picture_nft {
         price: u64,
         tips: Balance<SUI>,
         owner: address,
-        for_sale: bool,
     }
 
     // Gallery struct holding a collection of Picture NFTs
@@ -75,7 +74,7 @@ module picture::picture_nft {
         transfer::public_share_object(transfer_policy);
     }
     // Function to create a new Picture NFT
-    public fun create_picture(self: &mut Gallery, uri: String, price: u64, ctx: &mut TxContext) {
+    public fun create_picture(uri: String, price: u64, ctx: &mut TxContext) : Picture {
         let id_ = object::new(ctx);
         let inner = object::uid_to_inner(&id_);
         let picture = Picture {
@@ -85,44 +84,9 @@ module picture::picture_nft {
             price,
             tips: balance::zero(),
             owner: tx_context::sender(ctx),
-            for_sale: false,
         };
-        table::add(&mut self.pictures, inner, picture);
+        picture 
     }
-
-    // Function to list a Picture NFT for sale
-    public fun list_picture(
-        self: &mut Gallery,
-        picture_id: ID,
-        price: u64,
-        ctx: &mut TxContext,
-    ) {
-        let picture = table::borrow_mut(&mut self.pictures, picture_id);
-        assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
-        picture.for_sale = true;
-        picture.price = price;
-    }
-
-    // Function to buy a listed Picture NFT
-    public fun buy_picture(
-        self: &mut Gallery,
-        picture_id: ID,
-        payment: Coin<SUI>,
-        ctx: &mut TxContext,
-    ) {
-        let picture = table::borrow_mut(&mut self.pictures, picture_id);
-        assert!(picture.for_sale, ENoPicture);
-        assert!(coin::value(&payment) >= picture.price, EInvalidAmount);
-
-        let buyer_address = tx_context::sender(ctx);
-        let seller_address = picture.owner;
-
-        picture.owner = buyer_address;
-        picture.for_sale = false;
-        // transfer the price
-        transfer::public_transfer(payment, buyer_address);
-    }
-
     // Function to tip the creator of a Picture NFT
     public fun tip_seller(
         self: &mut Gallery,
@@ -133,55 +97,17 @@ module picture::picture_nft {
         let tip = coin::into_balance<SUI>(tip_amount);
         balance::join(&mut picture.tips, tip);
     }
-
-    // Added functionality: Function to update a Picture NFT
-    public fun update_picture(
-        self: &mut Gallery,
-        picture_id: ID,
-        new_uri: String,
-        new_price: u64,
-        ctx: &mut TxContext,
-    ) {
-        let picture = table::borrow_mut(&mut self.pictures, picture_id);
-        assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
-        picture.uri = new_uri;
-        picture.price = new_price;
-    }
-
-    // Added functionality: Function to transfer Picture NFT ownership
-    public fun transfer_picture(
-        self: &mut Gallery,
-        picture_id: ID,
-        new_owner: address,
-        ctx: &mut TxContext,
-    ) : Picture {
-        let picture = table::remove(&mut self.pictures, picture_id);
-        assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
-        picture.owner = new_owner;
-        picture
-    }
-
-    // Added functionality: Function to get Picture NFT details
-    public fun get_picture(
-        self: &Gallery,
-        id: ID,
-    ): (address, String, u64, u64, address, bool) {
-        let picture = table::borrow(&self.pictures, id);
-        let balance_ = balance::value(&picture.tips);
-        (
-            picture.creator,
-            picture.uri,
-            picture.price,
-            balance_,
-            picture.owner,
-            picture.for_sale
-        )
-    }
-
+    
     // =================== Helper Functions ===================
 
     // return the publisher
     fun get_publisher(shared: &PicturePublisher) : &Publisher {
         &shared.publisher
      }
+
+    #[test_only]
+    // call the init function
+    public fun test_init(ctx: &mut TxContext) {
+        init(PICTURE_NFT {}, ctx);
+    }
 }
