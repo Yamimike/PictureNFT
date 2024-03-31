@@ -15,6 +15,7 @@ module nft_gallery::picture_nft {
     const EPictureExists: u64 = 1;
     const ENotOwner: u64 = 2;
     const EInvalidAmount: u64 = 3;
+    const EListedForSale: u64 = 4; // New error code for listed pictures
 
     // Picture struct representing an NFT
     struct Picture has key, store {
@@ -55,6 +56,7 @@ module nft_gallery::picture_nft {
     ) {
         let picture = table::borrow_mut(&mut gallery.pictures, picture_id);
         assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
+        assert!(!picture.for_sale, EListedForSale); // Added assertion to check if already listed
         picture.for_sale = true;
         picture.price = price;
     }
@@ -72,7 +74,7 @@ module nft_gallery::picture_nft {
 
         let buyer_address = tx_context::sender(ctx);
         let seller_address = picture.owner;
-        let payment = coin::withdraw<PICTURE>(ctx, offered_amount);
+        let payment = coin::withdraw</* Actual coin type */>(ctx, offered_amount);
         coin::deposit(payment, seller_address);
 
         picture.owner = buyer_address;
@@ -87,11 +89,11 @@ module nft_gallery::picture_nft {
         ctx: &mut TxContext,
     ) {
         let picture = table::borrow(&gallery.pictures, picture_id);
-        let tip = coin::withdraw<PICTURE>(ctx, tip_amount);
+        let tip = coin::withdraw</* Actual coin type */>(ctx, tip_amount);
         coin::deposit(tip, picture.creator);
     }
 
-    // Added functionality: Function to update a Picture NFT
+    // Function to update a Picture NFT
     public fun update_picture(
         gallery: &mut Gallery,
         picture_id: UID,
@@ -101,11 +103,12 @@ module nft_gallery::picture_nft {
     ) {
         let picture = table::borrow_mut(&mut gallery.pictures, picture_id);
         assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
+        assert!(!picture.for_sale, EListedForSale); // Don't allow updates if listed for sale
         picture.uri = new_uri;
         picture.price = new_price;
     }
 
-    // Added functionality: Function to transfer Picture NFT ownership
+    // Function to transfer Picture NFT ownership
     public fun transfer_picture(
         gallery: &mut Gallery,
         picture_id: UID,
@@ -114,18 +117,24 @@ module nft_gallery::picture_nft {
     ) {
         let picture = table::borrow_mut(&mut gallery.pictures, picture_id);
         assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
+        assert!(!picture.for_sale, EListedForSale); // Don't allow transfer if listed for sale
         picture.owner = new_owner;
     }
 
-    // Added functionality: Function to get Picture NFT details
-    public fun get_picture(
-        gallery: &Gallery,
+    // Function to unlist a Picture NFT from sale
+    public fun unlist_picture(
+        gallery: &mut Gallery,
         picture_id: UID,
-    ): Option<Picture> {
-        let picture = table::borrow(&gallery.pictures, picture_id);
-        if (picture == none()) {
-            return none()
-        };
-        some(*picture)
+        ctx: &mut TxContext,
+    ) {
+        let picture = table::borrow_mut(&mut gallery.pictures, picture_id);
+        assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
+        assert!(picture.for_sale, ENoPicture); // Picture must be listed for sale
+        picture.for_sale = false;
+    }
+
+    // Function to get Picture NFT details
+    public fun get_picture(gallery: &Gallery, picture_id: UID): &Picture {
+        table::borrow(&gallery.pictures, picture_id)
     }
 }
