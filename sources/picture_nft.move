@@ -1,5 +1,6 @@
 module picture::picture_nft {
     use std::string::{String};
+  
     use sui::coin::{Self, Coin};
     use sui::object::{Self, ID, UID};
     use sui::table::{Table, Self};
@@ -19,20 +20,15 @@ module picture::picture_nft {
     // Picture struct representing an NFT
     struct Picture has key, store {
         id: UID,
+        inner: ID,
         creator: address,
         uri: String,
         price: u64,
         tips: Balance<SUI>,
         owner: address,
     }
-
-    // Gallery struct holding a collection of Picture NFTs
-    struct Gallery has key {
-        id: UID,
-        pictures: Table<ID, Picture>,
-    }
-
-      /// Publisher capability object
+    
+    /// Publisher capability object
     struct PicturePublisher has key { id: UID, publisher: Publisher }
 
      // one time witness 
@@ -76,9 +72,11 @@ module picture::picture_nft {
     // Function to create a new Picture NFT
     public fun create_picture(uri: String, price: u64, ctx: &mut TxContext) : Picture {
         let id_ = object::new(ctx);
-        let inner = object::uid_to_inner(&id_);
+        let inner_ = object::uid_to_inner(&id_);
+
         let picture = Picture {
             id: id_,
+            inner: inner_,
             creator: tx_context::sender(ctx),
             uri,
             price,
@@ -87,17 +85,7 @@ module picture::picture_nft {
         };
         picture 
     }
-    // Function to tip the creator of a Picture NFT
-    public fun tip_seller(
-        self: &mut Gallery,
-        picture_id: ID,
-        tip_amount: Coin<SUI>,
-    ) {
-        let picture = table::borrow_mut(&mut self.pictures, picture_id);
-        let tip = coin::into_balance<SUI>(tip_amount);
-        balance::join(&mut picture.tips, tip);
-    }
-    
+
     // =================== Helper Functions ===================
 
     // return the publisher
