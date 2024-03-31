@@ -7,6 +7,9 @@ module picture::picture_nft {
     use sui::tx_context::{Self, TxContext};
     use sui::sui::{SUI};
     use sui::balance::{Self, Balance};
+    use sui::kiosk::{Self, Kiosk, KioskOwnerCap};
+    use sui::transfer_policy::{Self as tp};
+    use sui::package::{Self, Publisher};
 
     // Error codes
     const ENoPicture: u64 = 0;
@@ -30,6 +33,47 @@ module picture::picture_nft {
         pictures: Table<ID, Picture>,
     }
 
+      /// Publisher capability object
+    struct PicturePublisher has key { id: UID, publisher: Publisher }
+
+     // one time witness 
+    struct PICTURE_NFT has drop {}
+
+    // Only owner of this module can access it.
+    struct AdminCap has key {
+        id: UID,
+    }
+
+    // =================== Initializer ===================
+    fun init(otw: PICTURE_NFT, ctx: &mut TxContext) {
+        // define the publisher
+        let publisher_ = package::claim<PICTURE_NFT>(otw, ctx);
+        // wrap the publisher and share.
+        transfer::share_object(PicturePublisher {
+            id: object::new(ctx),
+            publisher: publisher_
+        });
+        // transfer the admincap
+        transfer::transfer(AdminCap{id: object::new(ctx)}, tx_context::sender(ctx));
+    }
+
+    /// Users can create new kiosk for marketplace 
+    public fun new(ctx: &mut TxContext) : KioskOwnerCap {
+        let(kiosk, kiosk_cap) = kiosk::new(ctx);
+        // share the kiosk
+        transfer::public_share_object(kiosk);
+        kiosk_cap
+    }
+    // create any transferpolicy for rules 
+    public fun new_policy(publish: &PicturePublisher, ctx: &mut TxContext ) {
+        // set the publisher
+        let publisher = get_publisher(publish);
+        // create an transfer_policy and tp_cap
+        let (transfer_policy, tp_cap) = tp::new<Picture>(publisher, ctx);
+        // transfer the objects 
+        transfer::public_transfer(tp_cap, tx_context::sender(ctx));
+        transfer::public_share_object(transfer_policy);
+    }
     // Function to create a new Picture NFT
     public fun create_picture(self: &mut Gallery, uri: String, price: u64, ctx: &mut TxContext) {
         let id_ = object::new(ctx);
@@ -133,4 +177,11 @@ module picture::picture_nft {
             picture.for_sale
         )
     }
+
+    // =================== Helper Functions ===================
+
+    // return the publisher
+    fun get_publisher(shared: &PicturePublisher) : &Publisher {
+        &shared.publisher
+     }
 }
