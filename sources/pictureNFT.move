@@ -1,140 +1,122 @@
-// SPDX-License-Identifier: Apache-2.0
+struct UID(u64);
 
-module nft_gallery::picture_nft {
-    use std::option::{Option, none, some};
-    use std::string::{Self, String};
-    use sui::coin::{Self, Coin};
-    use sui::object::{Self, ID, UID};
-    use sui::table::{Table, Self};
-    use sui::transfer;
-    use sui::tx_context::{Self, TxContext};
-    use sui::vector;
+struct Picture {
+    id: UID,
+    uri: String,
+    price: u64,
+    owner: String,
+    for_sale: bool,
+}
 
-    // Error codes
-    const ENoPicture: u64 = 0;
-    const EPictureExists: u64 = 1;
-    const ENotOwner: u64 = 2;
-    const EInvalidAmount: u64 = 3;
-    const EListedForSale: u64 = 4; // New error code for listed pictures
+struct Gallery {
+    pictures: Vec<Picture>,
+}
 
-    // Picture struct representing an NFT
-    struct Picture has key, store {
-        id: UID,
-        creator: address,
-        uri: String,
-        price: u64,
-        owner: address,
-        for_sale: bool,
+struct TxContext {
+    sender: String,
+    value: u64,
+}
+
+enum GalleryError {
+    ENotOwner,
+    ENotEnoughBalance,
+    EPictureNotFound,
+    EOwnedBySomeoneElse,
+    EListedForSale,
+    ENotListedForSale
+}
+
+impl Gallery {
+    pub fn buy_picture(&mut self, picture_id: UID, ctx: &mut TxContext) -> Result<(), GalleryError> {
+        let picture = self.get_picture(picture_id)?;
+        let price = picture.price;
+        if ctx.value < price {
+            return Err(GalleryError::ENotEnoughBalance);
+        }
+        let picture_owner = picture.owner.clone();
+        picture.owner = tx_context::sender(ctx);
+        ctx.value -= price;
+        table::borrow_mut(&mut self.pictures, picture_id).for_sale = false;
+        table::borrow_mut(self.buyers, tx_context::sender(ctx))?.push(picture_id);
+        table::borrow_mut(self.sellers, picture_owner)?.remove(picture_id);
+        Ok(())
     }
 
-    // Gallery struct holding a collection of Picture NFTs
-    struct Gallery has key {
-        pictures: Table<UID, Picture>,
-    }
-
-    // Function to create a new Picture NFT
-    public fun create_picture(ctx: &mut TxContext, uri: String, price: u64): UID {
-        let picture_id = object::new(ctx);
+    pub fn add_picture(&mut self, uri: String, price: u64, ctx: &mut TxContext) -> Result<(), GalleryError> {
+        let id = UID(rand::random());
         let picture = Picture {
-            id: picture_id,
-            creator: tx_context::sender(ctx),
-            uri,
-            price,
+            id: id,
+            uri: uri,
+            price: price,
             owner: tx_context::sender(ctx),
             for_sale: false,
         };
-        transfer::share_object(picture);
-        picture_id
+        self.pictures.push(picture);
+        table::borrow_mut(self.sellers, tx_context::sender(ctx))?.insert(id);
+        Ok(())
     }
 
-    // Function to list a Picture NFT for sale
-    public fun list_picture(
-        gallery: &mut Gallery,
-        picture_id: UID,
-        price: u64,
-        ctx: &mut TxContext,
-    ) {
-        let picture = table::borrow_mut(&mut gallery.pictures, picture_id);
-        assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
-        assert!(!picture.for_sale, EListedForSale); // Added assertion to check if already listed
-        picture.for_sale = true;
-        picture.price = price;
-    }
-
-    // Function to buy a listed Picture NFT
-    public fun buy_picture(
-        gallery: &mut Gallery,
-        picture_id: UID,
-        offered_amount: u64,
-        ctx: &mut TxContext,
-    ) {
-        let picture = table::borrow_mut(&mut gallery.pictures, picture_id);
-        assert!(picture.for_sale, ENoPicture);
-        assert!(offered_amount >= picture.price, EInvalidAmount);
-
-        let buyer_address = tx_context::sender(ctx);
-        let seller_address = picture.owner;
-        let payment = coin::withdraw</* Actual coin type */>(ctx, offered_amount);
-        coin::deposit(payment, seller_address);
-
-        picture.owner = buyer_address;
-        picture.for_sale = false;
-    }
-
-    // Function to tip the creator of a Picture NFT
-    public fun tip_seller(
-        gallery: &Gallery,
-        picture_id: UID,
-        tip_amount: u64,
-        ctx: &mut TxContext,
-    ) {
-        let picture = table::borrow(&gallery.pictures, picture_id);
-        let tip = coin::withdraw</* Actual coin type */>(ctx, tip_amount);
-        coin::deposit(tip, picture.creator);
-    }
-
-    // Function to update a Picture NFT
-    public fun update_picture(
-        gallery: &mut Gallery,
+    pub fn update_picture(
+        &mut self,
         picture_id: UID,
         new_uri: String,
         new_price: u64,
         ctx: &mut TxContext,
-    ) {
-        let picture = table::borrow_mut(&mut gallery.pictures, picture_id);
-        assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
-        assert!(!picture.for_sale, EListedForSale); // Don't allow updates if listed for sale
+    ) -> Result<(), GalleryError> {
+        let picture = table::borrow_mut(&mut self.pictures, picture_id);
+        if picture.owner != tx_context::sender(ctx) {
+            return Err(GalleryError::ENotOwner);
+        }
+        if picture.for_sale {
+            return Err(GalleryError::EListedForSale);
+        }
         picture.uri = new_uri;
         picture.price = new_price;
+        Ok(())
     }
 
-    // Function to transfer Picture NFT ownership
-    public fun transfer_picture(
-        gallery: &mut Gallery,
-        picture_id: UID,
-        new_owner: address,
-        ctx: &mut TxContext,
-    ) {
-        let picture = table::borrow_mut(&mut gallery.pictures, picture_id);
-        assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
-        assert!(!picture.for_sale, EListedForSale); // Don't allow transfer if listed for sale
-        picture.owner = new_owner;
+    pub fn list_picture(&mut self, picture_id: UID, ctx: &mut TxContext) -> Result<(), GalleryError> {
+        let picture = table::borrow_mut(&mut self.pictures, picture_id);
+        if picture.owner != tx_context::sender(ctx) {
+            return Err(GalleryError::ENotOwner);
+        }
+        if picture.for_sale {
+            return Err(GalleryError::EListedForSale);
+        }
+        picture.for_sale = true;
+        table::borrow_mut(self.sellers, tx_context::sender(ctx))?.remove(picture_id);
+        table::borrow_mut(self.buyers, tx_context::sender(ctx))?.remove(picture_id);
+        table::borrow_mut(self.for_sale, picture.price)?.insert(picture_id);
+        Ok(())
     }
 
-    // Function to unlist a Picture NFT from sale
-    public fun unlist_picture(
-        gallery: &mut Gallery,
-        picture_id: UID,
-        ctx: &mut TxContext,
-    ) {
-        let picture = table::borrow_mut(&mut gallery.pictures, picture_id);
-        assert!(picture.owner == tx_context::sender(ctx), ENotOwner);
-        assert!(picture.for_sale, ENoPicture); // Picture must be listed for sale
-        picture.for_sale = false;
-    }
-
-    // Function to get Picture NFT details
-    public fun get_picture(gallery: &Gallery, picture_id: UID): &Picture {
-        table::borrow(&gallery.pictures, picture_id)
+    fn get_picture(&self, picture_id: UID) -> Result<Picture, GalleryError> {
+        let index = self
+            .pictures
+            .iter()
+            .position(|picture| picture.id == picture_id)
+            .ok_or(GalleryError::EPictureNotFound)?;
+        Ok(self.pictures[index].clone())
     }
 }
+
+fn main() {
+    let mut gallery = Gallery { pictures: vec![] };
+    let mut tx_ctx = TxContext {
+        sender: String::new(),
+        value: 0,
+    };
+    let mut buyers = table::new();
+    let mut sellers = table::new();
+    let mut for_sale = table::new();
+
+    table::insert(&mut buyers, String::new(), Vec::new());
+    table::insert(&mut sellers, String::new(), HashSet::new());
+    table::insert(&mut for_sale, 0, HashSet::new());
+
+    gallery.add_picture("https://picsum.photos/200".to_string(), 100, &mut tx_ctx).unwrap();
+    gallery.list_picture(UID(0), &mut tx_ctx).unwrap();
+
+    println!("{:#?}", gallery);
+}
+ 
