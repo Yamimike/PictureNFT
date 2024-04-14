@@ -23,7 +23,7 @@ enum GalleryError {
     EPictureNotFound,
     EOwnedBySomeoneElse,
     EListedForSale,
-    ENotListedForSale
+    ENotListedForSale,
 }
 
 impl Gallery {
@@ -106,17 +106,10 @@ fn main() {
         sender: String::new(),
         value: 0,
     };
-    let mut buyers = table::new();
-    let mut sellers = table::new();
-    let mut for_sale = table::new();
-
-    table::insert(&mut buyers, String::new(), Vec::new());
-    table::insert(&mut sellers, String::new(), HashSet::new());
-    table::insert(&mut for_sale, 0, HashSet::new());
+    // Initialize other tables (buyers, sellers, for_sale) as needed.
 
     gallery.add_picture("https://picsum.photos/200".to_string(), 100, &mut tx_ctx).unwrap();
     gallery.list_picture(UID(0), &mut tx_ctx).unwrap();
 
     println!("{:#?}", gallery);
 }
- 
