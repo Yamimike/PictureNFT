@@ -11,7 +11,7 @@ module picture::test_picture {
     use sui::coin::{Self, Coin}; 
     use std::string::{Self};
     use std::vector;
-    // use std::option::{Self};
+     use std::option::{Self, Option};
     // use std::debug;
 
     use picture::picture_nft::{Self as picture, Picture, PicturePublisher};
@@ -35,12 +35,27 @@ module picture::test_picture {
            transfer::public_transfer(cap, TEST_ADDRESS1);
         };
 
+         // create an policy
         next_tx(scenario, TEST_ADDRESS1);
         {
             let publisher = ts::take_shared<PicturePublisher>(scenario);
             picture::new_policy(&publisher, ts::ctx(scenario));
 
             ts::return_shared(publisher);
+        };
+        
+        // add rule
+        next_tx(scenario, TEST_ADDRESS1);
+        {
+            let policy = ts::take_shared<TransferPolicy<Picture>>(scenario);
+            let cap = ts::take_from_sender<TransferPolicyCap<Picture>>(scenario);
+            let amount_bp: u16 = 100;
+            let min_amount: u64 = 0;
+
+            royalty_rule::add(&mut policy, &cap, amount_bp, min_amount);
+           
+            ts::return_to_sender(scenario, cap);
+            ts::return_shared(policy);
         };
 
         // create an Picture NFT
@@ -78,16 +93,6 @@ module picture::test_picture {
             ts::return_to_sender(scenario, kiosk_cap);
         };
 
-        // create an transferpolicy
-        next_tx(scenario, TEST_ADDRESS1);
-        {
-            let publisher = ts::take_shared<PicturePublisher>(scenario);
-
-            picture::new_policy(&publisher, ts::ctx(scenario));
-
-            ts::return_shared(publisher);
-        };
-
         // List the Picture NFT to kiosk
         next_tx(scenario, TEST_ADDRESS1);
         {
@@ -116,12 +121,14 @@ module picture::test_picture {
             let kiosk =  ts::take_shared<Kiosk>(scenario);
             let policy = ts::take_shared<TransferPolicy<Picture>>(scenario);
             let price  = mint_for_testing<SUI>(1000_000_000_000, ts::ctx(scenario));
+            let royalty_price  = mint_for_testing<SUI>(10_000_000_000, ts::ctx(scenario));
             // get item id from effects
             let id_ = ts::created(&nft_data);
             let item_id = vector::borrow(&id_, 0);
         
             let (item, request) = kiosk::purchase<Picture>(&mut kiosk, *item_id, price);
 
+            royalty_rule::pay(&mut policy, &mut request, royalty_price);
             // confirm the request. Destroye the hot potato
             let (item_id, paid, from ) = tp::confirm_request(&policy, request);
 
@@ -133,6 +140,36 @@ module picture::test_picture {
             ts::return_shared(kiosk);
             ts::return_shared(policy);
         };
-         ts::end(scenario_test);
+        // withdraw royalty amount from TP
+       next_tx(scenario, TEST_ADDRESS1);
+        {
+            let cap = ts::take_from_sender<TransferPolicyCap<Picture>>(scenario);
+            let policy = ts::take_shared<TransferPolicy<Picture>>(scenario);
+            let amount = option::none();
+            option::fill(&mut amount, 10_000_000_000);
+
+            let coin_ = tp::withdraw(&mut policy, &cap, amount, ts::ctx(scenario));
+
+            transfer::public_transfer(coin_, TEST_ADDRESS1);
+        
+            ts::return_to_sender(scenario, cap);
+            ts::return_shared(policy);
+        };   
+        // withdraw from kiosk 
+        next_tx(scenario, TEST_ADDRESS1);
+        {
+            let kiosk =  ts::take_shared<Kiosk>(scenario);
+            let cap = ts::take_from_sender<KioskOwnerCap>(scenario);
+            let amount = option::none();
+            option::fill(&mut amount, 1000_000_000_000);
+
+            let coin_ = kiosk::withdraw(&mut kiosk, &cap, amount, ts::ctx(scenario));
+
+            transfer::public_transfer(coin_, TEST_ADDRESS1);
+
+            ts::return_shared(kiosk);
+            ts::return_to_sender(scenario, cap);
+        };        
+        ts::end(scenario_test);
     }
 }
